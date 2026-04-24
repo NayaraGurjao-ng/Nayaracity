@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Urbano - Cidade 10k</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f2f5;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 800px;
+            margin: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 25px; font-size: 1.2rem; }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .btn-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 2;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-calc { background-color: #27ae60; color: white; }
+        .btn-clear { background-color: #e74c3c; color: white; flex: 1; }
+        
+        button:hover { opacity: 0.9; }
+
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background: #e8f4ff;
+            border-left: 5px solid #3498db;
+            border-radius: 4px;
+            display: none; 
+        }
+
+        /* Estilo do Mapa */
+        #mapa-container {
+            margin-top: 20px;
+            text-align: center;
+            display: none;
+        }
+        canvas {
+            background: #dcdde1;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Simulador Urbano</h1>
+    
+    <form id="simForm">
+        <h2>Edificações (Qtd | Largura | Profundidade)</h2>
+        
+        <div class="input-group">
+            <span>Até 5m:</span>
+            <input type="number" id="n1" placeholder="Qtd">
+            <input type="number" id="w1" placeholder="L (m)">
+            <input type="number" id="d1" placeholder="P (m)">
+        </div>
+
+        <div class="input-group">
+            <span>Até 20m:</span>
+            <input type="number" id="n2" placeholder="Qtd">
+            <input type="number" id="w2" placeholder="L (m)">
+            <input type="number" id="d2" placeholder="P (m)">
+        </div>
+
+        <div class="input-group">
+            <span>Até 50m:</span>
+            <input type="number" id="n3" placeholder="Qtd">
+            <input type="number" id="w3" placeholder="L (m)">
+            <input type="number" id="d3" placeholder="P (m)">
+        </div>
+
+        <div class="input-group">
+            <span>> 50m:</span>
+            <input type="number" id="n4" placeholder="Qtd">
+            <input type="number" id="w4" placeholder="L (m)">
+            <input type="number" id="d4" placeholder="P (m)">
+        </div>
+
+        <h2>Parâmetros Ambientais</h2>
+        <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1;">
+                <label>Taxa permeável (%):</label>
+                <input type="number" id="perm" value="20">
+            </div>
+            <div style="flex: 1;">
+                <label>Número de árvores:</label>
+                <input type="number" id="trees" value="500">
+            </div>
+        </div>
+
+        <div class="btn-container">
+            <button type="button" class="btn-calc" onclick="simular()">Calcular Nova Simulação</button>
+            <button type="button" class="btn-clear" onclick="limpar()">Limpar</button>
+        </div>
+    </form>
+
+    <div class="result" id="resultado"></div>
+    
+    <div id="mapa-container">
+        <h3>Mapa Conceitual da Cidade (Vista Superior)</h3>
+        <canvas id="mapaCanvas" width="600" height="400"></canvas>
+    </div>
+</div>
+
+<script>
+    function getVal(id) {
+        return parseFloat(document.getElementById(id).value) || 0;
+    }
+
+    function simular() {
+        let n1 = getVal("n1"), w1 = getVal("w1"), d1 = getVal("d1");
+        let n2 = getVal("n2"), w2 = getVal("w2"), d2 = getVal("d2");
+        let n3 = getVal("n3"), w3 = getVal("w3"), d3 = getVal("d3");
+        let n4 = getVal("n4"), w4 = getVal("w4"), d4 = getVal("d4");
+
+        let permeabilidade = getVal("perm") / 100;
+        let arvores = getVal("trees");
+        
+        let areaConstruida = (n1*w1*d1) + (n2*w2*d2) + (n3*w3*d3) + (n4*w4*d4);
+        
+        if (areaConstruida === 0) {
+            alert("Adicione pelo menos uma edificação para calcular.");
+            return;
+        }
+
+        let divisor = (1 - permeabilidade) <= 0 ? 0.01 : (1 - permeabilidade);
+        let areaCidade = areaConstruida / divisor;
+        let densidade = 10000 / areaCidade;
+        let areaPermeavel = areaCidade * permeabilidade;
+        let indiceVegetacao = arvores / areaCidade;
+        let deltaT = (5 * (1 - permeabilidade)) + (0.0005 * densidade) - (0.1 * indiceVegetacao);
+
+        const resDiv = document.getElementById("resultado");
+        resDiv.style.display = "block";
+        resDiv.innerHTML = `
+            <b>📊 Resultado Atualizado:</b><br><br>
+            🏠 Área Construída: ${areaConstruida.toLocaleString()} m²<br>
+            🏙️ Área da Cidade: ${areaCidade.toLocaleString(undefined, {maximumFractionDigits: 2})} m²<br>
+            🌱 Área Permeável: ${areaPermeavel.toLocaleString(undefined, {maximumFractionDigits: 2})} m²<br>
+            👥 Densidade: ${densidade.toFixed(4)} hab/m²<br>
+            🌳 Índice Vegetação: ${indiceVegetacao.toFixed(4)} árv/m²<br>
+            🔥 ΔTemperatura: ${deltaT.toFixed(2)} °C
+        `;
+        
+        // Exibe o mapa e gera o desenho
+        document.getElementById("mapa-container").style.display = "block";
+        desenharCidade(n1, n2, n3, n4, arvores);
+
+        resDiv.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function desenharCidade(n1, n2, n3, n4, arvores) {
+        const canvas = document.getElementById("mapaCanvas");
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenhar Prédios (como retângulos cinzas)
+        const totalPredios = n1 + n2 + n3 + n4;
+        const maxExibicao = 200; // Limite visual para não travar o navegador
+        
+        function desenharLote(qtd, cor) {
+            let desenhados = 0;
+            while(desenhados < qtd && desenhados < maxExibicao) {
+                let x = Math.random() * (canvas.width - 20);
+                let y = Math.random() * (canvas.height - 20);
+                let size = 5 + Math.random() * 15;
+                ctx.fillStyle = cor;
+                ctx.fillRect(x, y, size, size);
+                ctx.strokeStyle = "#7f8c8d";
+                ctx.strokeRect(x, y, size, size);
+                desenhados++;
+            }
+        }
+
+        desenharLote(n1, "#bdc3c7"); // Baixos
+        desenharLote(n2, "#95a5a6"); // Médios
+        desenharLote(n3, "#7f8c8d"); // Altos
+        desenharLote(n4, "#2c3e50"); // Muito altos
+
+        // Desenhar Árvores (pontos verdes)
+        let arvoresDesenhadas = 0;
+        while(arvoresDesenhadas < arvores && arvoresDesenhadas < 400) {
+            let x = Math.random() * canvas.width;
+            let y = Math.random() * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fillStyle = "#27ae60";
+            ctx.fill();
+            arvoresDesenhadas++;
+        }
+    }
+
+    function limpar() {
+        document.getElementById("simForm").reset();
+        document.getElementById("resultado").style.display = "none";
+        document.getElementById("mapa-container").style.display = "none";
+    }
+</script>
+
+</body>
+</html>
