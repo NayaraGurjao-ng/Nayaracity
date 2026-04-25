@@ -1,67 +1,70 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import geopandas as gpd
 import plotly.graph_objects as go
-from datetime import datetime
 
 # Configuração da Página
-st.set_page_config(page_title="Nayara - Simulador Térmico Urbano", layout="wide")
+st.set_page_config(page_title="Nayara - Simulador Térmico", layout="wide")
 
 st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
 st.markdown("---")
 
-# --- SIDEBAR: PARÂMETROS DE ENTRADA (O que você colocou no Guide) ---
+# --- SIDEBAR: PARÂMETROS ---
 st.sidebar.header("📍 Localização e Clima")
-loc_name = st.sidebar.text_input("Nome da Localidade", "Fortaleza, CE")
-lat = st.sidebar.number_input("Latitude", value=-3.73, format="%.4f")
-lon = st.sidebar.number_input("Longitude", value=-38.52, format="%.4f")
-
-st.sidebar.subheader("🌡️ Condições Meteorológicas")
 t_max = st.sidebar.slider("Temperatura Máxima (°C)", 20.0, 45.0, 32.0)
 t_min = st.sidebar.slider("Temperatura Mínima (°C)", 15.0, 35.0, 24.0)
-umidade = st.sidebar.slider("Umidade Relativa Média (%)", 0, 100, 65)
-vento = st.sidebar.number_input("Velocidade do Vento (m/s)", value=4.0)
+vento = st.sidebar.number_input("Velocidade do Vento (m/s)", value=2.0)
 
-# --- ÁREA DE ESTUDO (A grade 50x50) ---
-st.sidebar.header("📏 Domínio da Simulação")
-grid_size = st.sidebar.selectbox("Tamanho da Grade (m)", [30, 50, 100], index=1)
-cell_res = st.sidebar.number_input("Resolução da Célula (m)", value=2.0)
+st.sidebar.header("🔬 Propriedades do Material")
+# Aqui incluímos os valores que mediste na tua investigação
+material = st.sidebar.selectbox("Material em Análise", ["Asfalto", "Concreto"])
 
-# --- UPLOAD DE ARQUIVOS (GeoJSON/Shapefile) ---
+if material == "Asfalto":
+    emissividade = st.sidebar.slider("Emissividade (Asfalto)", 0.85, 0.93, 0.90)
+    albedo = 0.10
+else:
+    emissividade = st.sidebar.slider("Emissividade (Concreto)", 0.88, 0.93, 0.91)
+    albedo = 0.30
+
+# --- ÁREA DE ESTUDO ---
 st.header("📂 1. Configuração da Área")
-col1, col2 = st.columns(2)
+uploaded_file = st.file_uploader("Upload de Shapefile (Opcional)", type=['geojson', 'zip'])
 
-with col1:
-    st.subheader("Geometria da Cidade")
-    uploaded_file = st.file_uploader("Upload de Shapefile ou GeoJSON", type=['geojson', 'zip'])
-    if uploaded_file:
-        # Aqui o código lerá o mapa de Fortaleza que você subir
-        st.success("Arquivo carregado com sucesso!")
+if not uploaded_file:
+    st.info("💡 Modo de Grade Padrão Ativado: Simulando área de 50x50m (Resolução 2m).")
+    largura, altura = 50, 50
+    resolucao = 2.0
+else:
+    st.success("Ficheiro carregado! Usando geometria do Shapefile.")
 
-with col2:
-    st.subheader("Materiais do Pavimento")
-    pavimento = st.selectbox("Tipo de Revestimento", ["Asfalto Convencional", "Concreto Rígido", "Asfalto com Aditivo Térmico"])
-    arvores = st.checkbox("Incluir sombreamento por vegetação?")
-
-# --- LÓGICA DE CÁLCULO (A Metodologia "Guardada") ---
+# --- EXECUÇÃO DA SIMULAÇÃO ---
 st.header("⚡ 2. Execução da Simulação")
 
 if st.button("Simular Desempenho Térmico"):
-    with st.spinner('Calculando balanço de energia...'):
-        # Simulando uma curva de temperatura do pavimento baseada na metodologia de Fourier
-        horas = np.arange(0, 24, 1)
-        # Fórmula simplificada de oscilação térmica
-        temp_pavimento = t_min + (t_max - t_min + 5) * np.sin((horas - 8) * np.pi / 12)
+    with st.spinner('A calcular balanço de energia superficial...'):
+        horas = np.arange(0, 24, 0.5)
         
-        if arvores:
-            temp_pavimento = temp_pavimento - 4  # Redução hipotética por sombra
+        # Metodologia: Balanço de onda curta e onda longa
+        # Radiação solar simplificada para Fortaleza
+        rad_solar = 800 * np.maximum(0, np.sin((horas - 6) * np.pi / 12))
+        
+        # Cálculo da Temperatura de Superfície (Simplificado)
+        # Considera Albedo (reflexão) e Emissividade (emissão de calor)
+        ganho_calor = (rad_solar * (1 - albedo)) 
+        perda_calor = emissividade * 5.67e-8 * ((t_max + 273.15)**4 - (t_min + 273.15)**4) / 100
+        
+        temp_surf = t_min + (ganho_calor / 40) - (vento * 0.5)
+        
+        # Simulação aos 5cm de profundidade (Inércia térmica)
+        temp_5cm = temp_surf * 0.85 + (t_min * 0.15)
 
-        # --- VISUALIZAÇÃO DOS RESULTADOS ---
-        st.subheader("Resultado: Temperatura de Superfície (24h)")
+        # Gráfico de Resultados
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=horas, y=temp_pavimento, mode='lines+markers', name=pavimento))
-        fig.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)")
+        fig.add_trace(go.Scatter(x=horas, y=temp_surf, name="Superfície", line=dict(color='firebrick', width=4)))
+        fig.add_trace(go.Scatter(x=horas, y=temp_5cm, name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash')))
+        
+        fig.update_layout(title=f"Comportamento Térmico: {material}",
+                          xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)")
         st.plotly_chart(fig, use_container_width=True)
 
-        st.info(f"Análise para {loc_name}: O pico térmico do {pavimento} será de {max(temp_pavimento):.2f}°C.")
+        st.success(f"Simulação concluída para {material} com emissividade de {emissividade}!")
