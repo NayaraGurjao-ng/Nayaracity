@@ -3,6 +3,5 @@ pandas
 numpy
 plotly
 xlsxwriter
-geopandas
-shapely
-pyogrio
+
+
