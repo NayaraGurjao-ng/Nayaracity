@@ -32,12 +32,18 @@ else:
     emissividade = st.sidebar.slider(f"Emissividade ({material})", 0.88, 0.93, 0.91)
     albedo = 0.30
 
-taxa_edificada = st.sidebar.slider("Taxa de Área Edificada (%)", 0, 100, 30)
+usar_edificacao = st.sidebar.checkbox("Simular Edificações?", value=True)
+taxa_edificada = st.sidebar.slider("Taxa de Área Edificada (%)", 0, 100, 30) if usar_edificacao else 0
 
 st.sidebar.subheader("🌳 Natureza e Água")
-taxa_permeavel = st.sidebar.slider("Taxa de Área Permeável (%)", 0, 100, 15)
-taxa_sombra = st.sidebar.slider("Taxa de Sombreamento (%)", 0, 100, 20)
-taxa_agua = st.sidebar.slider("Taxa de Corpos d'Água (%)", 0, 100, 5)
+usar_permeavel = st.sidebar.checkbox("Simular Solo Permeável?", value=True)
+taxa_permeavel = st.sidebar.slider("Taxa de Área Permeável (%)", 0, 100, 15) if usar_permeavel else 0
+
+usar_sombra = st.sidebar.checkbox("Simular Sombreamento?", value=True)
+taxa_sombra = st.sidebar.slider("Taxa de Sombreamento (%)", 0, 100, 20) if usar_sombra else 0
+
+usar_agua = st.sidebar.checkbox("Simular Corpos d'Água?", value=True)
+taxa_agua = st.sidebar.slider("Taxa de Corpos d'Água (%)", 0, 100, 5) if usar_agua else 0
 
 btn_simular = st.sidebar.button("Simular Desempenho Térmico")
 
@@ -51,15 +57,21 @@ mapa_data = np.zeros((grid_dim, grid_dim))
 np.random.seed(42)
 
 # Lógica de preenchimento da grade
-idx_edif = np.random.choice(grid_dim**2, int((taxa_edificada/100)*grid_dim**2), replace=False)
-mapa_data.flat[idx_edif] = 2
-vazios = np.where(mapa_data.flat == 0)[0]
-idx_agua = np.random.choice(vazios, min(len(vazios), int((taxa_agua/100)*grid_dim**2)), replace=False)
-mapa_data.flat[idx_agua] = 3
-vazios = np.where(mapa_data.flat == 0)[0]
-taxa_verde = (taxa_sombra + taxa_permeavel) / 2
-idx_verde = np.random.choice(vazios, min(len(vazios), int((taxa_verde/100)*grid_dim**2)), replace=False)
-mapa_data.flat[idx_verde] = 1
+if taxa_edificada > 0:
+    idx_edif = np.random.choice(grid_dim**2, int((taxa_edificada/100)*grid_dim**2), replace=False)
+    mapa_data.flat[idx_edif] = 2
+
+if taxa_agua > 0:
+    vazios = np.where(mapa_data.flat == 0)[0]
+    idx_agua = np.random.choice(vazios, min(len(vazios), int((taxa_agua/100)*grid_dim**2)), replace=False)
+    mapa_data.flat[idx_agua] = 3
+
+if taxa_sombra > 0 or taxa_permeavel > 0:
+    vazios = np.where(mapa_data.flat == 0)[0]
+    taxa_verde_visual = (taxa_sombra + taxa_permeavel) / 2
+    if taxa_verde_visual > 0:
+        idx_verde = np.random.choice(vazios, min(len(vazios), int((taxa_verde_visual/100)*grid_dim**2)), replace=False)
+        mapa_data.flat[idx_verde] = 1
 
 fig_mapa = px.imshow(mapa_data, x=np.arange(0, 100, 2), y=np.arange(0, 100, 2),
                     color_continuous_scale=['#444444', '#228B22', '#8B4513', '#1E90FF'])
@@ -116,16 +128,15 @@ if btn_simular:
             df_export.to_excel(writer, index=False)
         st.download_button("📥 Planilha", output.getvalue(), f"simulacao_{material}.xlsx", use_container_width=True)
 
-# NOTAS CIENTÍFICAS COMPLETAS (Restauradas)
     with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
         st.markdown(f"""
         ### Metodologia de Simulação
         Esta plataforma simula o comportamento térmico de superfícies urbanas em **Fortaleza/CE** com base nos seguintes critérios:
         
         1. **Balanço de Energia:** Considera a Radiação Solar Incidente filtrada pelo sombreamento ({taxa_sombra}%) e área edificada ({taxa_edificada}%).
-        2. **Materiais:** Utiliza emissividade de **{emissividade}** para o material **{material}** (conforme dados corrigidos do usuário).
-        3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo, similar ao motor de cálculo do **ENVI-met**.
-        4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável contribui para a redução do calor sensível.
+        2. **Materiais:** Utiliza emissividade de **{emissividade}** para o material **{material}**.
+        3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo.
+        4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável ({taxa_permeavel}%) contribui para a redução do calor sensível.
         
         *Nota: Este é um modelo paramétrico para fins de pesquisa acadêmica.*
         """)
