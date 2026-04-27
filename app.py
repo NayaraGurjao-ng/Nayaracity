@@ -127,5 +127,5 @@ if btn_simular:
         3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo, similar ao motor de cálculo do **ENVI-met**.
         4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável contribui para a redução do calor sensível.
         
-        *Nota: Este é um modelo paramétrico para fins de planejamento urbano e pesquisa acadêmica.*
+        *Nota: Este é um modelo paramétrico para fins de pesquisa acadêmica.*
         """)
