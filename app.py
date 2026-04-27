@@ -169,7 +169,6 @@ if 'resultados' in st.session_state:
         2. **Materiais:** Utiliza emissividade de **{emissividade}** para o material **{material}** (conforme dados corrigidos do usuário).
         3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo, similar ao motor de cálculo do **ENVI-met**.
         4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável contribui para a redução do calor sensível.
-        5. **Inércia:** Curva de 5cm calculada via decaimento térmico condutivo.
         
         *Nota: Este é um modelo paramétrico para fins de planejamento urbano e pesquisa acadêmica.*
         """)
