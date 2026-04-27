@@ -7,11 +7,12 @@ from io import BytesIO
 import geopandas as gpd
 import tempfile
 import os
+import zipfile
 
 # ==========================================
 # CONFIGURAÇÃO E INTERFACE
 # ==========================================
-st.set_page_config(page_title="Nayara - Simulador Térmico v1.6.4", layout="wide")
+st.set_page_config(page_title="Nayara - Simulador Térmico v1.6.5", layout="wide")
 
 st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
 st.markdown("---")
@@ -43,6 +44,22 @@ taxa_sombra = st.sidebar.slider("Taxa de Sombreamento (%)", 0, 100, 20)
 taxa_agua = st.sidebar.slider("Taxa de Corpos d'Água (%)", 0, 100, 5)
 
 btn_simular = st.sidebar.button("Simular Desempenho Térmico")
+
+# --- FUNÇÃO AUXILIAR PARA LER ZIP ---
+def carregar_shape_do_zip(uploaded_file, tmpdir):
+    path_zip = os.path.join(tmpdir, uploaded_file.name)
+    with open(path_zip, "wb") as f:
+        f.write(uploaded_file.getvalue())
+    
+    with zipfile.ZipFile(path_zip, 'r') as zip_ref:
+        zip_ref.extractall(tmpdir)
+    
+    # Procura o arquivo .shp dentro da pasta extraída
+    for root, dirs, files in os.walk(tmpdir):
+        for file in files:
+            if file.endswith(".shp"):
+                return gpd.read_file(os.path.join(root, file))
+    return None
 
 # ==========================================
 # 1. CONFIGURAÇÃO DAS BASES DE DADOS
@@ -77,7 +94,6 @@ mapa_data.flat[idx_verde] = 1
 fig_mapa = px.imshow(mapa_data, x=np.arange(0, 100, 2), y=np.arange(0, 100, 2),
                     color_continuous_scale=['#444444', '#228B22', '#8B4513', '#1E90FF'])
 fig_mapa.update_coloraxes(showscale=False)
-
 st.plotly_chart(fig_mapa, use_container_width=True)
 st.markdown("**Legenda:** ⬛ Pavimento | 🟩 Verde | 🟫 Edificações | 🟦 Água")
 
@@ -89,25 +105,25 @@ if geo_file:
     st.subheader("🗺️ Cenário Real (Representação Geográfica - Fortaleza)")
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            path_geo = os.path.join(tmpdir, "limite.zip")
-            with open(path_geo, "wb") as f: f.write(geo_file.getvalue())
-            gdf_limite = gpd.read_file(f"zip://{path_geo}")
-            fig_real = px.choropleth_mapbox(gdf_limite, geojson=gdf_limite.geometry.__geo_interface__, 
-                                           locations=gdf_limite.index, color_discrete_sequence=["#555555"],
-                                           opacity=0.3, mapbox_style="carto-positron",
-                                           center={"lat": -3.7319, "lon": -38.5267}, zoom=11)
-            if bld_file:
-                path_bld = os.path.join(tmpdir, "edificacoes.zip")
-                with open(path_bld, "wb") as f: f.write(bld_file.getvalue())
-                gdf_bld = gpd.read_file(f"zip://{path_bld}")
-                gdf_bld['geometry'] = gdf_bld.geometry.simplify(0.0001)
-                fig_bld = px.choropleth_mapbox(gdf_bld, geojson=gdf_bld.geometry.__geo_interface__, 
-                                              locations=gdf_bld.index, color_discrete_sequence=["#8B4513"], opacity=0.7)
-                fig_real.add_trace(fig_bld.data[0])
-            fig_real.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
-            st.plotly_chart(fig_real, use_container_width=True)
+            gdf_limite = carregar_shape_do_zip(geo_file, tmpdir)
+            if gdf_limite is not None:
+                fig_real = px.choropleth_mapbox(gdf_limite, geojson=gdf_limite.geometry.__geo_interface__, 
+                                               locations=gdf_limite.index, color_discrete_sequence=["#555555"],
+                                               opacity=0.3, mapbox_style="carto-positron",
+                                               center={"lat": -3.7319, "lon": -38.5267}, zoom=11)
+                
+                if bld_file:
+                    gdf_bld = carregar_shape_do_zip(bld_file, os.path.join(tmpdir, "bld"))
+                    if gdf_bld is not None:
+                        gdf_bld['geometry'] = gdf_bld.geometry.simplify(0.0001)
+                        fig_bld = px.choropleth_mapbox(gdf_bld, geojson=gdf_bld.geometry.__geo_interface__, 
+                                                      locations=gdf_bld.index, color_discrete_sequence=["#8B4513"], opacity=0.7)
+                        fig_real.add_trace(fig_bld.data[0])
+                
+                fig_real.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
+                st.plotly_chart(fig_real, use_container_width=True)
     except Exception as e:
-        st.error(f"Erro nos arquivos geográficos: {e}")
+        st.error(f"Erro ao processar mapas: {e}")
 
 # ==========================================
 # 4. RESULTADOS DA SIMULAÇÃO TÉRMICA
@@ -130,7 +146,8 @@ if btn_simular:
         fig_res = go.Figure()
         fig_res.add_trace(go.Scatter(x=horas, y=temp_surf, name="Superfície", line=dict(color='firebrick', width=4)))
         fig_res.add_trace(go.Scatter(x=horas, y=temp_5cm, name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash')))
-        fig_res.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)", hovermode="x", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig_res.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)", hovermode="x",
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
         st.plotly_chart(fig_res, use_container_width=True)
 
     with col_stats:
@@ -139,20 +156,17 @@ if btn_simular:
         st.metric("Temp. Mínima", f"{min(temp_surf):.1f} °C")
         st.info(f"**Variação Total (ΔT):** {max(temp_surf) - min(temp_surf):.1f} °C")
         
-        # Botão de download movido para cá para ficar junto dos resultados
-        export_data = [{"Coord_X": x, "Coord_Y": y, "Temp_Max": round(max(temp_surf), 2), "Media": round(np.mean(temp_surf), 2)} 
-                       for x in range(0, 50) for y in range(0, 50)]
+        # Download
+        export_data = [{"Coord_X": x, "Coord_Y": y, "Temp_Max": round(max(temp_surf), 2)} for x in range(0, 50) for y in range(0, 50)]
         df_export = pd.DataFrame(export_data)
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_export.to_excel(writer, index=False)
         st.download_button("📥 Baixar Planilha", output.getvalue(), f"simulacao_{material}.xlsx", use_container_width=True)
 
-    # Notas Científicas
     with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
         st.write(f"""
-        Esta simulação utiliza parâmetros térmicos validados para a cidade de Fortaleza:
-        * **Emissividade:** Configurada em {emissividade} para o material {material}.
-        * **Curva de Profundidade:** Amortecimento térmico calculado para 5cm abaixo da superfície (Referência ENVI-met).
-        * **Fatores de Mitigação:** Considera sombreamento, albedo do material e resfriamento evaporativo.
+        Esta simulação utiliza parâmetros validados para Fortaleza:
+        * **Emissividade:** {emissividade} ({material}).
+        * **Amortecimento:** Modelo linear de profundidade (5cm).
         """)
