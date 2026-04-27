@@ -116,11 +116,16 @@ if btn_simular:
             df_export.to_excel(writer, index=False)
         st.download_button("📥 Planilha", output.getvalue(), f"simulacao_{material}.xlsx", use_container_width=True)
 
-# EXPANDER DE METODOLOGIA (Sempre visível após simular)
+# NOTAS CIENTÍFICAS COMPLETAS (Restauradas)
     with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
-        st.write(f"""
-        Esta simulação utiliza parâmetros térmicos para a cidade de Fortaleza/CE:
-        * **Emissividade:** Configurada em {emissividade} para {material}.
-        * **Curva de Profundidade:** Estimativa de amortecimento a 5cm (Referência ENVI-met).
-        * **Mitigação:** Considera refrescamento evaporativo por água ({taxa_agua}%) e solo permeável.
+        st.markdown(f"""
+        ### Metodologia de Simulação
+        Esta plataforma simula o comportamento térmico de superfícies urbanas em **Fortaleza/CE** com base nos seguintes critérios:
+        
+        1. **Balanço de Energia:** Considera a Radiação Solar Incidente filtrada pelo sombreamento ({taxa_sombra}%) e área edificada ({taxa_edificada}%).
+        2. **Materiais:** Utiliza emissividade de **{emissividade}** para o material **{material}** (conforme dados corrigidos do usuário).
+        3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo, similar ao motor de cálculo do **ENVI-met**.
+        4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável contribui para a redução do calor sensível.
+        
+        *Nota: Este é um modelo paramétrico para fins de planejamento urbano e pesquisa acadêmica.*
         """)
