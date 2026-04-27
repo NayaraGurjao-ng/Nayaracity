@@ -9,7 +9,7 @@ import tempfile
 import os
 
 # Configuração da Página
-st.set_page_config(page_title="Nayara - Simulador Térmico v1.6", layout="wide")
+st.set_page_config(page_title="Nayara - Simulador Térmico v1.6.1", layout="wide")
 
 st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
 st.markdown("---")
@@ -53,11 +53,11 @@ btn_simular = st.sidebar.button("Simular Desempenho Térmico")
 st.header("📂 1. Configuração da Área de Estudo")
 col1, col2 = st.columns(2)
 with col1:
-    geo_file = st.file_uploader("Upload do Perímetro (Zip/SHP)", type=['zip'], key="geo")
+    geo_file = st.file_uploader("Upload do Limite (Zip)", type=['zip'], key="geo")
 with col2:
-    bld_file = st.file_uploader("Upload de Edificações (Opcional)", type=['zip'], key="bld")
+    bld_file = st.file_uploader("Upload de Edificações (Zip)", type=['zip'], key="bld")
 
-# --- VISUALIZAÇÃO 1: GRADE DE PIXELS (DISTRIBUIÇÃO) ---
+# --- VISUALIZAÇÃO 1: GRADE DE PIXELS ---
 st.subheader("📊 Visualização Paramétrica (Grade de Pixels)")
 grid_dim = 50
 mapa_data = np.zeros((grid_dim, grid_dim))
@@ -93,27 +93,36 @@ with col_leg:
 # --- VISUALIZAÇÃO 2: MAPA GEOGRÁFICO REAL ---
 if geo_file:
     st.markdown("---")
-    st.subheader("🗺️ Mapa Geográfico Real (Shapefile)")
+    st.subheader("🗺️ Análise Geoespacial de Fortaleza")
     try:
-        # Lógica para ler o ZIP do Shapefile de Fortaleza
         with tempfile.TemporaryDirectory() as tmpdir:
-            with open(os.path.join(tmpdir, geo_file.name), "wb") as f:
-                f.write(geo_file.getvalue())
-            gdf = gpd.read_file(os.path.join(tmpdir, geo_file.name))
+            # Lendo Limite
+            path_geo = os.path.join(tmpdir, geo_file.name)
+            with open(path_geo, "wb") as f: f.write(geo_file.getvalue())
+            gdf_limite = gpd.read_file(path_geo)
             
-            # Criando o mapa geográfico
-            fig_geo = px.choropleth_mapbox(gdf, 
-                                          geojson=gdf.geometry.__geo_interface__, 
-                                          locations=gdf.index,
-                                          color_discrete_sequence=["#1E90FF"],
-                                          opacity=0.5,
-                                          center={"lat": -3.7319, "lon": -38.5267},
-                                          mapbox_style="carto-positron", zoom=10)
-            fig_geo.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=500)
+            fig_geo = px.choropleth_mapbox(gdf_limite, geojson=gdf_limite.geometry.__geo_interface__, 
+                                          locations=gdf_limite.index, color_discrete_sequence=["#555555"],
+                                          opacity=0.3, mapbox_style="carto-positron", 
+                                          center={"lat": -3.7319, "lon": -38.5267}, zoom=11)
+
+            # Lendo Edificações (Se houver upload)
+            if bld_file:
+                path_bld = os.path.join(tmpdir, bld_file.name)
+                with open(path_bld, "wb") as f: f.write(bld_file.getvalue())
+                gdf_bld = gpd.read_file(path_bld)
+                # Simplificação para performance
+                gdf_bld['geometry'] = gdf_bld.geometry.simplify(0.0001) 
+                
+                fig_bld = px.choropleth_mapbox(gdf_bld, geojson=gdf_bld.geometry.__geo_interface__, 
+                                              locations=gdf_bld.index, color_discrete_sequence=["#8B4513"],
+                                              opacity=0.7)
+                fig_geo.add_trace(fig_bld.data[0])
+            
+            fig_geo.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
             st.plotly_chart(fig_geo, use_container_width=True)
-            st.success(f"✅ Perímetro '{geo_file.name}' carregado com sucesso!")
     except Exception as e:
-        st.error(f"Erro ao processar o mapa: {e}")
+        st.error(f"Erro ao processar camadas: {e}")
 
 # --- RESULTADOS ---
 st.header("⚡ 2. Resultados da Simulação")
@@ -126,40 +135,30 @@ if btn_simular:
     perda_onda_longa = emissividade * 0.12
     
     temp_surf = t_min + (rad_solar * (1 - albedo) / 34) - (vento * 0.45) - perda_onda_longa - (refrescamento / 2)
-    temp_5cm = temp_surf * 0.81 + (t_min * 0.19)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=horas, y=temp_surf, name="Superfície", line=dict(color='firebrick', width=4)))
-    fig.add_trace(go.Scatter(x=horas, y=temp_5cm, name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash')))
-    fig.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)", hovermode="x")
-    st.plotly_chart(fig, use_container_width=True)
-
-    data_points = []
-    for x in range(0, 100, 2):
-        for y in range(0, 100, 2):
-            data_points.append({
-                "Coord_X": x, "Coord_Y": y, "Material": material,
-                "Temp_Min_Surf": round(min(temp_surf), 2),
-                "Temp_Max_Surf": round(max(temp_surf), 2),
-                "Temp_Media_Surf": round(np.mean(temp_surf), 2),
-                "Temp_Max_5cm": round(max(temp_5cm), 2),
-                "Albedo_Config": albedo, "Emissividade_Config": emissividade,
-                "Sombra_%": taxa_sombra, "Agua_%": taxa_agua, "Permeavel_%": taxa_permeavel
-            })
     
+    # 1. Gráfico
+    fig_res = go.Figure()
+    fig_res.add_trace(go.Scatter(x=horas, y=temp_surf, name="Superfície", line=dict(color='firebrick', width=4)))
+    fig_res.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)")
+    
+    col_graph, col_stats = st.columns([3, 1])
+    with col_graph:
+        st.plotly_chart(fig_res, use_container_width=True)
+    
+    # 2. CAIXINHA DE VARIAÇÃO (DELTA T)
+    with col_stats:
+        st.write("### 🌡️ Variação Térmica")
+        delta_t = max(temp_surf) - min(temp_surf)
+        st.metric(label="Temp. Máxima", value=f"{max(temp_surf):.1f} °C")
+        st.metric(label="Temp. Mínima", value=f"{min(temp_surf):.1f} °C")
+        st.info(f"**Variação (ΔT):** {delta_t:.1f} °C")
+        
+    # Download do Excel Rico (Mínima, Máxima, Média)
+    data_points = [{"Coord_X": x, "Coord_Y": y, "Temp_Min": round(min(temp_surf), 2), 
+                    "Temp_Max": round(max(temp_surf), 2), "Media": round(np.mean(temp_surf), 2)} 
+                   for x in range(0, 50) for y in range(0, 50)]
     df_export = pd.DataFrame(data_points)
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_export.to_excel(writer, index=False, sheet_name='Estatisticas_Termicas')
-    
-    st.download_button(label="📥 Baixar Planilha Científica Completa", data=output.getvalue(), 
-                     file_name=f"simulacao_{material}_v1.6.xlsx", mime="application/vnd.ms-excel")
-
-    with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
-        st.write(f"""
-        Esta simulação utiliza parâmetros térmicos específicos para a cidade de Fortaleza:
-        * **Emissividade:** Ajustada para {emissividade} (Ref: Dados fornecidos pelo pesquisador).
-        * **Albedo:** {albedo} para {material}.
-        * **Refrescamento:** Baseado na evapotranspiração da água ({taxa_agua}%) e solo permeável ({taxa_permeavel}%).
-        * **Sombreamento:** Redução da radiação de onda curta em {taxa_sombra}%.
-        """)
+        df_export.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Planilha Completa", output.getvalue(), "simulacao_v1.6.1.xlsx")
