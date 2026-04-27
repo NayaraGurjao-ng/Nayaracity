@@ -116,5 +116,11 @@ if btn_simular:
             df_export.to_excel(writer, index=False)
         st.download_button("📥 Planilha", output.getvalue(), f"simulacao_{material}.xlsx", use_container_width=True)
 
-    with st.expander("📖 Notas Científicas"):
-        st.write(f"Emissividade: {emissividade} | Albedo: {albedo} | Modelo: Fortaleza/CE.")
+# EXPANDER DE METODOLOGIA (Sempre visível após simular)
+    with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
+        st.write(f"""
+        Esta simulação utiliza parâmetros térmicos para a cidade de Fortaleza/CE:
+        * **Emissividade:** Configurada em {emissividade} para {material}.
+        * **Curva de Profundidade:** Estimativa de amortecimento a 5cm (Referência ENVI-met).
+        * **Mitigação:** Considera refrescamento evaporativo por água ({taxa_agua}%) e solo permeável.
+        """)
