@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from io import BytesIO
+from datetime import time
 
 # ==========================================
 # CONFIGURAÇÃO E INTERFACE
@@ -56,16 +57,13 @@ grid_dim = 50
 mapa_data = np.zeros((grid_dim, grid_dim))
 np.random.seed(42)
 
-# Lógica de preenchimento da grade
 if taxa_edificada > 0:
     idx_edif = np.random.choice(grid_dim**2, int((taxa_edificada/100)*grid_dim**2), replace=False)
     mapa_data.flat[idx_edif] = 2
-
 if taxa_agua > 0:
     vazios = np.where(mapa_data.flat == 0)[0]
     idx_agua = np.random.choice(vazios, min(len(vazios), int((taxa_agua/100)*grid_dim**2)), replace=False)
     mapa_data.flat[idx_agua] = 3
-
 if taxa_sombra > 0 or taxa_permeavel > 0:
     vazios = np.where(mapa_data.flat == 0)[0]
     taxa_verde_visual = (taxa_sombra + taxa_permeavel) / 2
@@ -88,55 +86,84 @@ with col_leg:
     st.markdown("🟦 **Azul**: Água")
 
 # ==========================================
-# 2. RESULTADOS DA SIMULAÇÃO
+# 2. RESULTADOS DA SIMULAÇÃO (COM MEMÓRIA)
 # ==========================================
 st.header("⚡ 2. Resultados da Simulação")
 
+# Lógica para manter os dados na tela
 if btn_simular:
-    horas = np.arange(0, 24, 0.5)
+    horas_num = np.arange(0, 24, 0.5)
     
+    # Formatação da hora para o Excel (0.5 -> 00:30:00)
+    horas_formatadas = []
+    for h in horas_num:
+        minutos = int((h % 1) * 60)
+        horas_formatadas.append(time(int(h), minutos).strftime("%H:%M"))
+
     # Cálculos
     bloqueio = (taxa_sombra * 0.75 + taxa_edificada * 0.35) / 100
-    rad_solar = 800 * np.maximum(0, np.sin((horas - 6) * np.pi / 12)) * (1 - bloqueio)
+    rad_solar = 800 * np.maximum(0, np.sin((horas_num - 6) * np.pi / 12)) * (1 - bloqueio)
     refrescamento = (taxa_agua * 0.20) + (umidade * 0.05) + (taxa_permeavel * 0.12)
     perda_onda_longa = emissividade * 0.12
     
     temp_surf = t_min + (rad_solar * (1 - albedo) / 34) - (vento * 0.45) - perda_onda_longa - (refrescamento / 2)
     temp_5cm = temp_surf * 0.81 + (t_min * 0.19)
 
-    # Layout: Gráfico e Métricas LADO A LADO
+    # Salva no estado da sessão para não sumir ao baixar o arquivo
+    st.session_state['resultados'] = {
+        'horas_num': horas_num,
+        'horas_formatadas': horas_formatadas,
+        'temp_surf': temp_surf,
+        'temp_5cm': temp_5cm,
+        'material': material
+    }
+
+# Exibição dos resultados (se existirem na memória)
+if 'resultados' in st.session_state:
+    res = st.session_state['resultados']
+    
     col_graph, col_stats = st.columns([3, 1])
 
     with col_graph:
         fig_res = go.Figure()
-        fig_res.add_trace(go.Scatter(x=horas, y=temp_surf, name="Superfície", line=dict(color='firebrick', width=4)))
-        fig_res.add_trace(go.Scatter(x=horas, y=temp_5cm, name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash')))
+        fig_res.add_trace(go.Scatter(x=res['horas_num'], y=res['temp_surf'], name="Superfície", line=dict(color='firebrick', width=4)))
+        fig_res.add_trace(go.Scatter(x=res['horas_num'], y=res['temp_5cm'], name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash')))
         fig_res.update_layout(xaxis_title="Hora do Dia", yaxis_title="Temperatura (°C)", hovermode="x")
         st.plotly_chart(fig_res, use_container_width=True)
 
     with col_stats:
         st.write("### 🌡️ Variação Térmica")
-        st.metric("Máxima", f"{max(temp_surf):.1f} °C")
-        st.metric("Mínima", f"{min(temp_surf):.1f} °C")
-        st.info(f"**ΔT:** {max(temp_surf) - min(temp_surf):.1f} °C")
+        st.metric("Máxima", f"{max(res['temp_surf']):.1f} °C")
+        st.metric("Mínima", f"{min(res['temp_surf']):.1f} °C")
+        st.info(f"**ΔT:** {max(res['temp_surf']) - min(res['temp_surf']):.1f} °C")
         
-        # Download Excel
-        export_data = [{"Hora": h, "T_Surf": ts, "T_5cm": t5} for h, ts, t5 in zip(horas, temp_surf, temp_5cm)]
-        df_export = pd.DataFrame(export_data)
+        # Preparação do Excel com formato de Hora
+        df_export = pd.DataFrame({
+            "Hora": res['horas_formatadas'],
+            "T_Surf (°C)": res['temp_surf'],
+            "T_5cm (°C)": res['temp_5cm']
+        })
+        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_export.to_excel(writer, index=False)
-        st.download_button("📥 Planilha", output.getvalue(), f"simulacao_{material}.xlsx", use_container_width=True)
+            df_export.to_excel(writer, index=False, sheet_name='Simulacao')
+            # Ajuste de largura de coluna no Excel
+            worksheet = writer.sheets['Simulacao']
+            worksheet.set_column('A:C', 15)
+            
+        st.download_button(
+            label="📥 Baixar Planilha Excel",
+            data=output.getvalue(),
+            file_name=f"simulacao_{res['material']}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
     with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
         st.markdown(f"""
         ### Metodologia de Simulação
-        Esta plataforma simula o comportamento térmico de superfícies urbanas em **Fortaleza/CE** com base nos seguintes critérios:
-        
-        1. **Balanço de Energia:** Considera a Radiação Solar Incidente filtrada pelo sombreamento ({taxa_sombra}%) e área edificada ({taxa_edificada}%).
-        2. **Materiais:** Utiliza emissividade de **{emissividade}** para o material **{material}**.
-        3. **Amortecimento Térmico:** A curva de profundidade (5cm) utiliza um fator de decaimento logarítmico para simular a inércia térmica do solo.
-        4. **Mitigação Evaporativa:** O efeito de corpos d'água ({taxa_agua}%) e solo permeável ({taxa_permeavel}%) contribui para a redução do calor sensível.
-        
-        *Nota: Este é um modelo paramétrico para fins de pesquisa acadêmica.*
+        Esta plataforma simula o comportamento térmico em **Fortaleza/CE**:
+        1. **Balanço de Energia:** Radiação solar filtrada por sombra ({taxa_sombra}%) e edifícios.
+        2. **Materiais:** Emissividade de **{emissividade}** para **{material}**.
+        3. **Inércia:** Curva de 5cm calculada via decaimento térmico condutivo.
         """)
