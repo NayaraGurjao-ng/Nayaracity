@@ -7,7 +7,8 @@ from datetime import time
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 import folium
-import geopandas as gpd  # Biblioteca para ler o Shapefile
+import geopandas as gpd
+from shapely.geometry import Point # Acrescentado para checar limites geográficos
 
 # ==========================================
 # CONFIGURAÇÃO E CARREGAMENTO DE DADOS
@@ -17,11 +18,8 @@ st.set_page_config(page_title="Nayara - Simulador Térmico v2.1", layout="wide")
 @st.cache_data
 def carregar_dados_geograficos():
     try:
-        # Lendo o shapefile que você enviou (certifique-se que os arquivos estão na pasta data/)
         gdf = gpd.read_file("data/bairros.shp")
-        # Garante que o sistema de coordenadas seja o padrão para mapas web (WGS84)
         gdf = gdf.to_crs(epsg=4326)
-        # Padroniza nomes para facilitar a busca
         gdf["nome_bairr"] = gdf["nome_bairr"].astype(str).str.strip()
         return gdf
     except Exception as e:
@@ -77,18 +75,16 @@ else:
     bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
     # --- LÓGICA DE GEOLOCALIZAÇÃO POR SHAPEFILE ---
-    lat_centro, lon_centro = -3.7319, -38.5267 # Default
+    lat_centro, lon_centro = -3.7319, -38.5267 
     poligono_bairro = None
 
     if gdf_mapa is not None:
         bairro_geo = gdf_mapa[gdf_mapa["nome_bairr"] == bairro_selecionado]
         if not bairro_geo.empty:
-            # Pega o centro do polígono para focar o mapa
             centroide = bairro_geo.geometry.centroid.iloc[0]
             lat_centro, lon_centro = centroide.y, centroide.x
             poligono_bairro = bairro_geo
 
-    # Preservando todos os seus controles originais
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
         t_min = st.slider("Temp. Mínima (°C)", 10, 35, 24)
@@ -112,36 +108,56 @@ else:
 
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
-    # --- 1. ÁREA DE ESTUDO (MAPA COM PERÍMETRO REAL) ---
+    # --- 1. ÁREA DE ESTUDO (MAPA COM DENSIDADE GEORREFERENCIADA) ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
     mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
     
-    # Desenha o perímetro real do Shapefile se ele existir
     if poligono_bairro is not None:
+        # Desenha o perímetro
         folium.GeoJson(
             poligono_bairro,
-            style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.15}
+            style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.1}
         ).add_to(mapa)
-    
-    if btn_simular:
-        np.random.seed(42)
-        # Visualização simplificada das taxas
-        for _ in range(int(taxa_sombra/4)):
-            folium.CircleMarker(
-                location=[lat_centro + np.random.uniform(-0.004, 0.004), lon_centro + np.random.uniform(-0.004, 0.004)],
-                radius=8, color="green", fill=True, fill_opacity=0.5
-            ).add_to(mapa)
         
-        for _ in range(int(taxa_edificada/4)):
-            folium.RegularPolygonMarker(
-                location=[lat_centro + np.random.uniform(-0.004, 0.004), lon_centro + np.random.uniform(-0.004, 0.004)],
-                number_of_sides=4, radius=6, color="gray", fill=True
-            ).add_to(mapa)
+        # NOVO: Lógica de Densidade dentro do Polígono
+        if btn_simular:
+            geom = poligono_bairro.geometry.iloc[0]
+            min_x, min_y, max_x, max_y = geom.bounds
+            np.random.seed(42)
 
-    st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}")
+            def plotar_pontos_no_perimetro(taxa, cor, tipo="circulo"):
+                # Ajuste visual da quantidade de pontos (taxa / 2 para não sobrecarregar o mapa)
+                objetivo = int(taxa / 2)
+                contagem = 0
+                tentativas = 0
+                while contagem < objetivo and tentativas < 500:
+                    tentativas += 1
+                    # Gera ponto aleatório dentro do retângulo do bairro
+                    lat_random = np.random.uniform(min_y, max_y)
+                    lon_random = np.random.uniform(min_x, max_x)
+                    
+                    # Verifica se o ponto está REALMENTE dentro do bairro (polígono irregular)
+                    if Point(lon_random, lat_random).within(geom):
+                        if tipo == "circulo":
+                            folium.CircleMarker(
+                                location=[lat_random, lon_random],
+                                radius=5, color=cor, fill=True, fill_opacity=0.6
+                            ).add_to(mapa)
+                        else:
+                            folium.RegularPolygonMarker(
+                                location=[lat_random, lon_random],
+                                number_of_sides=4, radius=5, color=cor, fill=True, fill_opacity=0.8
+                            ).add_to(mapa)
+                        contagem += 1
 
-    # --- 2. RESULTADOS (MANTENDO SUA LÓGICA INTACTA) ---
+            # Executa a plotagem baseada nos sliders
+            plotar_pontos_no_perimetro(taxa_sombra, "green", "circulo")
+            plotar_pontos_no_perimetro(taxa_edificada, "gray", "quadrado")
+
+    st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}_{btn_simular}")
+
+    # --- 2. RESULTADOS ---
     st.header("⚡Resultados da Simulação")
 
     if btn_simular:
