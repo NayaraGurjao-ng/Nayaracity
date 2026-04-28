@@ -93,7 +93,7 @@ else:
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
     # --- 1. ÁREA DE ESTUDO (MAPA SUBSTITUINDO O GRID) ---
-    st.header(f"📂 1. Área de Estudo: {bairro_selecionado}")
+    st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
     # Criando o mapa base (OpenStreetMap)
     # Centralizado em Fortaleza por padrão
@@ -118,7 +118,7 @@ else:
     st_folium(mapa, width=1100, height=450)
 
     # --- 2. RESULTADOS (SUA LÓGICA ORIGINAL PRESERVADA) ---
-    st.header("⚡ 2. Resultados da Simulação")
+    st.header("⚡Resultados da Simulação")
 
     if btn_simular:
         horas_num = np.arange(0, 24, 0.5)
@@ -172,7 +172,7 @@ else:
             st.plotly_chart(fig_res, use_container_width=True)
 
         with c_stats:
-            st.write("### 🌡️ Variação")
+            st.write("### 🌡️ Variação térmica superficial")
             st.metric("Máxima", f"{max(res['ts']):.1f} °C")
             st.metric("Mínima", f"{min(res['ts']):.1f} °C")
             st.info(f"**ΔT:** {max(res['ts']) - min(res['ts']):.1f} °C")
@@ -183,7 +183,7 @@ else:
                 df_ex.to_excel(w, index=False, sheet_name='Resultados')
             st.download_button("📥 Planilha Excel", out.getvalue(), f"simulacao_{res['mat']}.xlsx", use_container_width=True)
 
-        with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
+        with st.expander("📝 Notas Científicas e Metodologia Aplicada"):
             st.markdown(f"""
             ### Metodologia de Simulação
             Simulação térmica para **Fortaleza/CE**:
