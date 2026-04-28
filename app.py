@@ -2,15 +2,28 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 from io import BytesIO
 from datetime import time
 from streamlit_option_menu import option_menu
+from streamlit_folium import st_folium
+import folium
 
 # ==========================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO E CARREGAMENTO DE DADOS
 # ==========================================
 st.set_page_config(page_title="Nayara - Simulador Térmico v2.1", layout="wide")
+
+@st.cache_data
+def carregar_dados_bairros():
+    try:
+        # Nome do arquivo conforme sua correção
+        df = pd.read_csv("data/informacoes_bairros.csv")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar os dados: {e}")
+        return pd.DataFrame({"nome_bairr": ["Fortaleza (Geral)"], "id": [0]})
+
+df_bairros = carregar_dados_bairros()
 
 # --- MENU LATERAL ---
 with st.sidebar:
@@ -50,8 +63,11 @@ else:
     st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
     st.markdown("---")
 
-    # Sidebar: Parâmetros em Barras Suspensas (Expander)
-    st.sidebar.header("📍 Parâmetros Globais")
+    # Sidebar: Parâmetros
+    st.sidebar.header("📍 Localização e Globais")
+    
+    # Novo seletor de bairro baseado no seu CSV
+    bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
@@ -76,30 +92,36 @@ else:
 
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
-    # --- 1. ÁREA DE ESTUDO ---
-    st.header("📂 1. Configuração da Área de Estudo")
-    grid_dim = 50
-    mapa_data = np.zeros((grid_dim, grid_dim))
-    np.random.seed(42)
-    if taxa_edificada > 0: mapa_data.flat[np.random.choice(grid_dim**2, int((taxa_edificada/100)*grid_dim**2), replace=False)] = 2
-    if taxa_agua > 0:
-        vazios = np.where(mapa_data.flat == 0)[0]
-        mapa_data.flat[np.random.choice(vazios, min(len(vazios), int((taxa_agua/100)*grid_dim**2)), replace=False)] = 3
-    if taxa_sombra > 0 or taxa_permeavel > 0:
-        vazios = np.where(mapa_data.flat == 0)[0]
-        taxa_v = (taxa_sombra + taxa_permeavel) / 2
-        if taxa_v > 0: mapa_data.flat[np.random.choice(vazios, min(len(vazios), int((taxa_v/100)*grid_dim**2)), replace=False)] = 1
+    # --- 1. ÁREA DE ESTUDO (MAPA SUBSTITUINDO O GRID) ---
+    st.header(f"📂 1. Área de Estudo: {bairro_selecionado}")
+    
+    # Criando o mapa base (OpenStreetMap)
+    # Centralizado em Fortaleza por padrão
+    mapa = folium.Map(location=[-3.7319, -38.5267], zoom_start=13, tiles="OpenStreetMap")
+    
+    # Representação visual aleatória das taxas escolhidas sobre o mapa
+    if btn_simular:
+        np.random.seed(42)
+        # Simula a colocação de árvores e prédios dentro do visual
+        for _ in range(int(taxa_sombra/4)):
+            folium.CircleMarker(
+                location=[-3.73 + np.random.uniform(-0.02, 0.02), -38.52 + np.random.uniform(-0.02, 0.02)],
+                radius=8, color="green", fill=True, fill_opacity=0.5
+            ).add_to(mapa)
+        
+        for _ in range(int(taxa_edificada/4)):
+            folium.RegularPolygonMarker(
+                location=[-3.73 + np.random.uniform(-0.02, 0.02), -38.52 + np.random.uniform(-0.02, 0.02)],
+                number_of_sides=4, radius=6, color="gray", fill=True
+            ).add_to(mapa)
 
-    fig_mapa = px.imshow(mapa_data, color_continuous_scale=['#444444', '#228B22', '#8B4513', '#1E90FF'])
-    fig_mapa.update_coloraxes(showscale=False)
-    st.plotly_chart(fig_mapa, use_container_width=True)
+    st_folium(mapa, width=1100, height=450)
 
-    # --- 2. RESULTADOS ---
+    # --- 2. RESULTADOS (SUA LÓGICA ORIGINAL PRESERVADA) ---
     st.header("⚡ 2. Resultados da Simulação")
 
     if btn_simular:
         horas_num = np.arange(0, 24, 0.5)
-        # Formatação de Hora para o Hover e Excel
         horas_formatadas = [time(int(h), int((h % 1) * 60)).strftime("%H:%M") for h in horas_num]
         
         bloqueio = (taxa_sombra * 0.75 + taxa_edificada * 0.35) / 100
@@ -121,17 +143,14 @@ else:
 
         with c_graph:
             fig_res = go.Figure()
-            
-            # Gráfico de Superfície com HOVER FORMATADO
             fig_res.add_trace(go.Scatter(
                 x=res['h_n'], y=res['ts'], 
                 name="Superfície",
                 line=dict(color='firebrick', width=4),
-                customdata=res['h_f'], # Passa as horas formatadas (HH:MM)
+                customdata=res['h_f'],
                 hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"
             ))
             
-            # Gráfico de Profundidade com HOVER FORMATADO
             fig_res.add_trace(go.Scatter(
                 x=res['h_n'], y=res['t5'], 
                 name="Profundidade (5cm)",
@@ -140,7 +159,6 @@ else:
                 hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"
             ))
 
-            # Formatação do Eixo X para mostrar apenas algumas horas em formato de texto
             fig_res.update_layout(
                 xaxis=dict(
                     title="Hora do Dia",
@@ -149,7 +167,7 @@ else:
                     ticktext=["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "23:59"]
                 ),
                 yaxis_title="Temperatura (°C)",
-                hovermode="x unified" # Mostra as duas temperaturas juntas ao passar o mouse
+                hovermode="x unified"
             )
             st.plotly_chart(fig_res, use_container_width=True)
 
@@ -159,12 +177,10 @@ else:
             st.metric("Mínima", f"{min(res['ts']):.1f} °C")
             st.info(f"**ΔT:** {max(res['ts']) - min(res['ts']):.1f} °C")
             
-            # Download Excel
             df_ex = pd.DataFrame({"Hora": res['h_f'], "T_Surf (°C)": res['ts'], "T_5cm (°C)": res['t5']})
             out = BytesIO()
             with pd.ExcelWriter(out, engine='xlsxwriter') as w:
                 df_ex.to_excel(w, index=False, sheet_name='Resultados')
-                w.sheets['Resultados'].set_column('A:C', 15)
             st.download_button("📥 Planilha Excel", out.getvalue(), f"simulacao_{res['mat']}.xlsx", use_container_width=True)
 
         with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
