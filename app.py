@@ -7,39 +7,38 @@ from datetime import time
 from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 import folium
+import geopandas as gpd  # Biblioteca para ler o Shapefile
 
 # ==========================================
 # CONFIGURAÇÃO E CARREGAMENTO DE DADOS
 # ==========================================
 st.set_page_config(page_title="Nayara - Simulador Térmico v2.1", layout="wide")
 
-# Dicionário de coordenadas centrais para os bairros de Fortaleza
-COORDENADAS_BAIRROS = {
-    "ALDEOTA": [-3.7348, -38.5026],
-    "CENTRO": [-3.7275, -38.5275],
-    "COCÓ": [-3.7542, -38.4831],
-    "MEIRELES": [-3.7248, -38.4906],
-    "DIONÍSIO TORRES": [-3.7441, -38.5076],
-    "FÁTIMA": [-3.7511, -38.5294],
-    "PAPICU": [-3.7389, -38.4772],
-    "VARJOTA": [-3.7264, -38.4842],
-    "BENFICA": [-3.7431, -38.5381],
-    "MESSEJANA": [-3.8347, -38.4878],
-    "AEROLÂNDIA": [-3.7711, -38.5106],
-    "AEROPORTO": [-3.7761, -38.5325],
-    "SÃO GERARDO": [-3.7301, -38.5521],
-}
+@st.cache_data
+def carregar_dados_geograficos():
+    try:
+        # Lendo o shapefile que você enviou (certifique-se que os arquivos estão na pasta data/)
+        gdf = gpd.read_file("data/bairros.shp")
+        # Garante que o sistema de coordenadas seja o padrão para mapas web (WGS84)
+        gdf = gdf.to_crs(epsg=4326)
+        # Padroniza nomes para facilitar a busca
+        gdf["nome_bairr"] = gdf["nome_bairr"].astype(str).str.strip()
+        return gdf
+    except Exception as e:
+        st.error(f"Erro ao carregar mapa: {e}")
+        return None
 
 @st.cache_data
 def carregar_dados_bairros():
     try:
-        # Nome do arquivo conforme sua correção
         df = pd.read_csv("data/informacoes_bairros.csv")
+        df["nome_bairr"] = df["nome_bairr"].astype(str).str.strip()
         return df
     except Exception as e:
-        st.error(f"Erro ao carregar os dados: {e}")
-        return pd.DataFrame({"nome_bairr": ["Fortaleza (Geral)"], "lat": [-3.7319], "lon": [-38.5267]})
+        st.error(f"Erro ao carregar CSV: {e}")
+        return pd.DataFrame({"nome_bairr": ["Fortaleza (Geral)"]})
 
+gdf_mapa = carregar_dados_geograficos()
 df_bairros = carregar_dados_bairros()
 
 # --- MENU LATERAL ---
@@ -59,9 +58,6 @@ with st.sidebar:
         }
     )
 
-# ==========================================
-# PÁGINAS SECUNDÁRIAS (SOBRE E REFERÊNCIAS)
-# ==========================================
 if pagina == "Sobre o Projeto":
     st.title("📖 Sobre o Projeto")
     st.markdown("---")
@@ -73,24 +69,26 @@ elif pagina == "Referências":
     st.markdown("---")
     st.write("Bases: Scopus e Web of Science.")
 
-# ==========================================
-# PÁGINA: SIMULAÇÃO (PRINCIPAL)
-# ==========================================
 else:
     st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
     st.markdown("---")
 
-    # Sidebar: Parâmetros
     st.sidebar.header("📍 Localização e Globais")
-    
-    # Novo seletor de bairro baseado no seu CSV
     bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
-    # Lógica de localização: Busca no dicionário acima ou usa o padrão de Fortaleza
-    # O .upper() garante que combine mesmo se houver diferença de maiúsculas/minúsculas
-    coords = COORDENADAS_BAIRROS.get(bairro_selecionado.upper(), [-3.7319, -38.5267])
-    lat_centro, lon_centro = coords[0], coords[1]
+    # --- LÓGICA DE GEOLOCALIZAÇÃO POR SHAPEFILE ---
+    lat_centro, lon_centro = -3.7319, -38.5267 # Default
+    poligono_bairro = None
 
+    if gdf_mapa is not None:
+        bairro_geo = gdf_mapa[gdf_mapa["nome_bairr"] == bairro_selecionado]
+        if not bairro_geo.empty:
+            # Pega o centro do polígono para focar o mapa
+            centroide = bairro_geo.geometry.centroid.iloc[0]
+            lat_centro, lon_centro = centroide.y, centroide.x
+            poligono_bairro = bairro_geo
+
+    # Preservando todos os seus controles originais
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
         t_min = st.slider("Temp. Mínima (°C)", 10, 35, 24)
@@ -114,43 +112,36 @@ else:
 
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
-    # --- 1. ÁREA DE ESTUDO (MAPA DINÂMICO) ---
+    # --- 1. ÁREA DE ESTUDO (MAPA COM PERÍMETRO REAL) ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
-    # Criando o mapa base centralizado nas coordenadas do bairro com zoom de aproximação
     mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
     
-    # Adicionando sombreamento na área do bairro (Destaque circular)
-    folium.Circle(
-        location=[lat_centro, lon_centro],
-        radius=600,
-        color="orange",
-        fill=True,
-        fill_color="orange",
-        fill_opacity=0.15,
-        popup=f"Zona de estudo: {bairro_selecionado}"
-    ).add_to(mapa)
+    # Desenha o perímetro real do Shapefile se ele existir
+    if poligono_bairro is not None:
+        folium.GeoJson(
+            poligono_bairro,
+            style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.15}
+        ).add_to(mapa)
     
-    # Representação visual aleatória das taxas escolhidas sobre o mapa
     if btn_simular:
         np.random.seed(42)
-        # Simula a colocação de árvores e prédios dentro da vizinhança do bairro
+        # Visualização simplificada das taxas
         for _ in range(int(taxa_sombra/4)):
             folium.CircleMarker(
-                location=[lat_centro + np.random.uniform(-0.005, 0.005), lon_centro + np.random.uniform(-0.005, 0.005)],
+                location=[lat_centro + np.random.uniform(-0.004, 0.004), lon_centro + np.random.uniform(-0.004, 0.004)],
                 radius=8, color="green", fill=True, fill_opacity=0.5
             ).add_to(mapa)
         
         for _ in range(int(taxa_edificada/4)):
             folium.RegularPolygonMarker(
-                location=[lat_centro + np.random.uniform(-0.005, 0.005), lon_centro + np.random.uniform(-0.005, 0.005)],
+                location=[lat_centro + np.random.uniform(-0.004, 0.004), lon_centro + np.random.uniform(-0.004, 0.004)],
                 number_of_sides=4, radius=6, color="gray", fill=True
             ).add_to(mapa)
 
-    # A chave dinâmica garante que o mapa mude de posição ao trocar o bairro no seletor
     st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}")
 
-    # --- 2. RESULTADOS (SUA LÓGICA ORIGINAL PRESERVADA) ---
+    # --- 2. RESULTADOS (MANTENDO SUA LÓGICA INTACTA) ---
     st.header("⚡Resultados da Simulação")
 
     if btn_simular:
@@ -176,32 +167,14 @@ else:
 
         with c_graph:
             fig_res = go.Figure()
-            fig_res.add_trace(go.Scatter(
-                x=res['h_n'], y=res['ts'], 
-                name="Superfície",
-                line=dict(color='firebrick', width=4),
-                customdata=res['h_f'],
-                hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"
-            ))
-            
-            fig_res.add_trace(go.Scatter(
-                x=res['h_n'], y=res['t5'], 
-                name="Profundidade (5cm)",
-                line=dict(color='royalblue', dash='dash'),
-                customdata=res['h_f'],
-                hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"
-            ))
+            fig_res.add_trace(go.Scatter(x=res['h_n'], y=res['ts'], name="Superfície", line=dict(color='firebrick', width=4),
+                                         customdata=res['h_f'], hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"))
+            fig_res.add_trace(go.Scatter(x=res['h_n'], y=res['t5'], name="Profundidade (5cm)", line=dict(color='royalblue', dash='dash'),
+                                         customdata=res['h_f'], hovertemplate="<b>%{name}</b><br>Hora: %{customdata}<br>Temp: %{y:.1f}°C<extra></extra>"))
 
-            fig_res.update_layout(
-                xaxis=dict(
-                    title="Hora do Dia",
-                    tickmode='array',
-                    tickvals=[0, 3, 6, 9, 12, 15, 18, 21, 23.5],
-                    ticktext=["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "23:59"]
-                ),
-                yaxis_title="Temperatura (°C)",
-                hovermode="x unified"
-            )
+            fig_res.update_layout(xaxis=dict(title="Hora do Dia", tickmode='array', tickvals=[0, 3, 6, 9, 12, 15, 18, 21, 23.5], 
+                                            ticktext=["00:00", "03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "23:59"]), 
+                                  yaxis_title="Temperatura (°C)", hovermode="x unified")
             st.plotly_chart(fig_res, use_container_width=True)
 
         with c_stats:
