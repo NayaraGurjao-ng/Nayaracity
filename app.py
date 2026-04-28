@@ -13,6 +13,23 @@ import folium
 # ==========================================
 st.set_page_config(page_title="Nayara - Simulador Térmico v2.1", layout="wide")
 
+# Dicionário de coordenadas centrais para os bairros de Fortaleza
+COORDENADAS_BAIRROS = {
+    "ALDEOTA": [-3.7348, -38.5026],
+    "CENTRO": [-3.7275, -38.5275],
+    "COCÓ": [-3.7542, -38.4831],
+    "MEIRELES": [-3.7248, -38.4906],
+    "DIONÍSIO TORRES": [-3.7441, -38.5076],
+    "FÁTIMA": [-3.7511, -38.5294],
+    "PAPICU": [-3.7389, -38.4772],
+    "VARJOTA": [-3.7264, -38.4842],
+    "BENFICA": [-3.7431, -38.5381],
+    "MESSEJANA": [-3.8347, -38.4878],
+    "AEROLÂNDIA": [-3.7711, -38.5106],
+    "AEROPORTO": [-3.7761, -38.5325],
+    "SÃO GERARDO": [-3.7301, -38.5521],
+}
+
 @st.cache_data
 def carregar_dados_bairros():
     try:
@@ -69,10 +86,10 @@ else:
     # Novo seletor de bairro baseado no seu CSV
     bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
-    # Obter coordenadas do bairro para centralizar o mapa
-    dados_bairro = df_bairros[df_bairros["nome_bairr"] == bairro_selecionado].iloc[0]
-    lat_centro = dados_bairro["lat"] if "lat" in dados_bairro else -3.7319
-    lon_centro = dados_bairro["lon"] if "lon" in dados_bairro else -38.5267
+    # Lógica de localização: Busca no dicionário acima ou usa o padrão de Fortaleza
+    # O .upper() garante que combine mesmo se houver diferença de maiúsculas/minúsculas
+    coords = COORDENADAS_BAIRROS.get(bairro_selecionado.upper(), [-3.7319, -38.5267])
+    lat_centro, lon_centro = coords[0], coords[1]
 
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
@@ -100,7 +117,7 @@ else:
     # --- 1. ÁREA DE ESTUDO (MAPA DINÂMICO) ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
-    # Criando o mapa base centralizado no bairro com zoom de aproximação
+    # Criando o mapa base centralizado nas coordenadas do bairro com zoom de aproximação
     mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
     
     # Adicionando sombreamento na área do bairro (Destaque circular)
@@ -120,16 +137,17 @@ else:
         # Simula a colocação de árvores e prédios dentro da vizinhança do bairro
         for _ in range(int(taxa_sombra/4)):
             folium.CircleMarker(
-                location=[lat_centro + np.random.uniform(-0.006, 0.006), lon_centro + np.random.uniform(-0.006, 0.006)],
+                location=[lat_centro + np.random.uniform(-0.005, 0.005), lon_centro + np.random.uniform(-0.005, 0.005)],
                 radius=8, color="green", fill=True, fill_opacity=0.5
             ).add_to(mapa)
         
         for _ in range(int(taxa_edificada/4)):
             folium.RegularPolygonMarker(
-                location=[lat_centro + np.random.uniform(-0.006, 0.006), lon_centro + np.random.uniform(-0.006, 0.006)],
+                location=[lat_centro + np.random.uniform(-0.005, 0.005), lon_centro + np.random.uniform(-0.005, 0.005)],
                 number_of_sides=4, radius=6, color="gray", fill=True
             ).add_to(mapa)
 
+    # A chave dinâmica garante que o mapa mude de posição ao trocar o bairro no seletor
     st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}")
 
     # --- 2. RESULTADOS (SUA LÓGICA ORIGINAL PRESERVADA) ---
