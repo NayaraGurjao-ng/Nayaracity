@@ -13,7 +13,7 @@ st.set_page_config(page_title="Nayara - Simulador Térmico v1.8", layout="wide")
 
 # --- NAVEGAÇÃO NA BARRA LATERAL ---
 st.sidebar.title("Navegação")
-pagina = st.sidebar.radio("Ir para:", ["Simule sua área de estudo", "Sobre"])
+pagina = st.sidebar.radio("Ir para:", ["Sobre", "Simule sua área de estudo"])
 
 # ==========================================
 # PÁGINA: SOBRE
