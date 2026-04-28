@@ -6,3 +6,5 @@ xlsxwriter
 streamlit-option-menu
 folium
 streamlit-folium
+geopandas
+pyogrio
