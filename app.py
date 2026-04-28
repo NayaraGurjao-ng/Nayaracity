@@ -21,7 +21,7 @@ def carregar_dados_bairros():
         return df
     except Exception as e:
         st.error(f"Erro ao carregar os dados: {e}")
-        return pd.DataFrame({"nome_bairr": ["Fortaleza (Geral)"], "id": [0]})
+        return pd.DataFrame({"nome_bairr": ["Fortaleza (Geral)"], "lat": [-3.7319], "lon": [-38.5267]})
 
 df_bairros = carregar_dados_bairros()
 
@@ -69,6 +69,11 @@ else:
     # Novo seletor de bairro baseado no seu CSV
     bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
+    # Obter coordenadas do bairro para centralizar o mapa
+    dados_bairro = df_bairros[df_bairros["nome_bairr"] == bairro_selecionado].iloc[0]
+    lat_centro = dados_bairro["lat"] if "lat" in dados_bairro else -3.7319
+    lon_centro = dados_bairro["lon"] if "lon" in dados_bairro else -38.5267
+
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
         t_min = st.slider("Temp. Mínima (°C)", 10, 35, 24)
@@ -92,30 +97,40 @@ else:
 
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
-    # --- 1. ÁREA DE ESTUDO (MAPA SUBSTITUINDO O GRID) ---
+    # --- 1. ÁREA DE ESTUDO (MAPA DINÂMICO) ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
-    # Criando o mapa base (OpenStreetMap)
-    # Centralizado em Fortaleza por padrão
-    mapa = folium.Map(location=[-3.7319, -38.5267], zoom_start=13, tiles="OpenStreetMap")
+    # Criando o mapa base centralizado no bairro com zoom de aproximação
+    mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
+    
+    # Adicionando sombreamento na área do bairro (Destaque circular)
+    folium.Circle(
+        location=[lat_centro, lon_centro],
+        radius=600,
+        color="orange",
+        fill=True,
+        fill_color="orange",
+        fill_opacity=0.15,
+        popup=f"Zona de estudo: {bairro_selecionado}"
+    ).add_to(mapa)
     
     # Representação visual aleatória das taxas escolhidas sobre o mapa
     if btn_simular:
         np.random.seed(42)
-        # Simula a colocação de árvores e prédios dentro do visual
+        # Simula a colocação de árvores e prédios dentro da vizinhança do bairro
         for _ in range(int(taxa_sombra/4)):
             folium.CircleMarker(
-                location=[-3.73 + np.random.uniform(-0.02, 0.02), -38.52 + np.random.uniform(-0.02, 0.02)],
+                location=[lat_centro + np.random.uniform(-0.006, 0.006), lon_centro + np.random.uniform(-0.006, 0.006)],
                 radius=8, color="green", fill=True, fill_opacity=0.5
             ).add_to(mapa)
         
         for _ in range(int(taxa_edificada/4)):
             folium.RegularPolygonMarker(
-                location=[-3.73 + np.random.uniform(-0.02, 0.02), -38.52 + np.random.uniform(-0.02, 0.02)],
+                location=[lat_centro + np.random.uniform(-0.006, 0.006), lon_centro + np.random.uniform(-0.006, 0.006)],
                 number_of_sides=4, radius=6, color="gray", fill=True
             ).add_to(mapa)
 
-    st_folium(mapa, width=1100, height=450)
+    st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}")
 
     # --- 2. RESULTADOS (SUA LÓGICA ORIGINAL PRESERVADA) ---
     st.header("⚡Resultados da Simulação")
