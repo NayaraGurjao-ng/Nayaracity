@@ -8,7 +8,7 @@ from streamlit_option_menu import option_menu
 from streamlit_folium import st_folium
 import folium
 import geopandas as gpd
-from shapely.geometry import Point # Acrescentado para checar limites geográficos
+from shapely.geometry import Point
 
 # ==========================================
 # CONFIGURAÇÃO E CARREGAMENTO DE DADOS
@@ -108,53 +108,50 @@ else:
 
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
-    # --- 1. ÁREA DE ESTUDO (MAPA COM DENSIDADE GEORREFERENCIADA) ---
+    # --- 1. ÁREA DE ESTUDO ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
+    # Criamos o mapa base
     mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
     
     if poligono_bairro is not None:
-        # Desenha o perímetro
+        # Desenha o perímetro original
         folium.GeoJson(
             poligono_bairro,
             style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.1}
         ).add_to(mapa)
         
-        # NOVO: Lógica de Densidade dentro do Polígono
+        # Só executa a plotagem se o botão de simular for clicado
         if btn_simular:
             geom = poligono_bairro.geometry.iloc[0]
             min_x, min_y, max_x, max_y = geom.bounds
             np.random.seed(42)
 
-            def plotar_pontos_no_perimetro(taxa, cor, tipo="circulo"):
-                # Ajuste visual da quantidade de pontos (taxa / 2 para não sobrecarregar o mapa)
+            def plotar_densidade(taxa, cor, tipo):
                 objetivo = int(taxa / 2)
                 contagem = 0
                 tentativas = 0
                 while contagem < objetivo and tentativas < 500:
                     tentativas += 1
-                    # Gera ponto aleatório dentro do retângulo do bairro
-                    lat_random = np.random.uniform(min_y, max_y)
-                    lon_random = np.random.uniform(min_x, max_x)
-                    
-                    # Verifica se o ponto está REALMENTE dentro do bairro (polígono irregular)
-                    if Point(lon_random, lat_random).within(geom):
+                    lat_r = np.random.uniform(min_y, max_y)
+                    lon_r = np.random.uniform(min_x, max_x)
+                    if Point(lon_r, lat_r).within(geom):
                         if tipo == "circulo":
                             folium.CircleMarker(
-                                location=[lat_random, lon_random],
+                                location=[lat_r, lon_r],
                                 radius=5, color=cor, fill=True, fill_opacity=0.6
                             ).add_to(mapa)
                         else:
                             folium.RegularPolygonMarker(
-                                location=[lat_random, lon_random],
+                                location=[lat_r, lon_r],
                                 number_of_sides=4, radius=5, color=cor, fill=True, fill_opacity=0.8
                             ).add_to(mapa)
                         contagem += 1
 
-            # Executa a plotagem baseada nos sliders
-            plotar_pontos_no_perimetro(taxa_sombra, "green", "circulo")
-            plotar_pontos_no_perimetro(taxa_edificada, "gray", "quadrado")
+            plotar_densidade(taxa_sombra, "green", "circulo")
+            plotar_densidade(taxa_edificada, "gray", "quadrado")
 
+    # A KEY DINÂMICA resolve o problema do mapa apagar após carregar
     st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}_{btn_simular}")
 
     # --- 2. RESULTADOS ---
