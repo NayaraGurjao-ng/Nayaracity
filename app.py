@@ -158,7 +158,7 @@ else:
             st.plotly_chart(fig_res, use_container_width=True)
 
         with c_stats:
-            st.write("### 🌡️ Variação térmica")
+            st.write("### 🌡️ Variação térmica superficial")
             st.metric("Máxima", f"{max(res['ts']):.1f} °C")
             st.metric("Mínima", f"{min(res['ts']):.1f} °C")
             st.info(f"**ΔT:** {max(res['ts']) - min(res['ts']):.1f} °C")
