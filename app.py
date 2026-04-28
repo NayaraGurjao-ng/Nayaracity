@@ -99,7 +99,7 @@ else:
     btn_simular = st.sidebar.button("🚀 EXECUTAR SIMULAÇÃO", use_container_width=True)
 
     # --- 1. CONFIGURAÇÃO DA ÁREA ---
-    st.header("📂 1. Configuração da Área de Estudo")
+    st.header("📂 Configuração da Área de Estudo")
     grid_dim = 50
     mapa_data = np.zeros((grid_dim, grid_dim))
     np.random.seed(42)
@@ -127,7 +127,7 @@ else:
         st.markdown("⬛ **Cinza**: Pavimento\n\n🟩 **Verde**: Vegetação\n\n🟫 **Marrom**: Edificações\n\n🟦 **Azul**: Água")
 
     # --- 2. RESULTADOS ---
-    st.header("⚡ 2. Resultados da Simulação")
+    st.header("⚡ Resultados da Simulação")
 
     if btn_simular:
         horas_num = np.arange(0, 24, 0.5)
@@ -158,7 +158,7 @@ else:
             st.plotly_chart(fig_res, use_container_width=True)
 
         with c_stats:
-            st.write("### 🌡️ Variação")
+            st.write("### 🌡️ Variação térmica")
             st.metric("Máxima", f"{max(res['ts']):.1f} °C")
             st.metric("Mínima", f"{min(res['ts']):.1f} °C")
             st.info(f"**ΔT:** {max(res['ts']) - min(res['ts']):.1f} °C")
