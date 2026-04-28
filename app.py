@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from io import BytesIO
 from datetime import time
 from streamlit_option_menu import option_menu
-from streamlit_folium import st_folium
+from streamlit_folium import folium_static # Alterado para a versão estática estável
 import folium
 import geopandas as gpd
 from shapely.geometry import Point
@@ -74,7 +74,7 @@ else:
     st.sidebar.header("📍 Localização e Globais")
     bairro_selecionado = st.sidebar.selectbox("Escolha o Bairro", df_bairros["nome_bairr"].unique())
 
-    # --- LÓGICA DE GEOLOCALIZAÇÃO POR SHAPEFILE ---
+    # --- LÓGICA DE GEOLOCALIZAÇÃO ---
     lat_centro, lon_centro = -3.7319, -38.5267 
     poligono_bairro = None
 
@@ -111,48 +111,45 @@ else:
     # --- 1. ÁREA DE ESTUDO ---
     st.header(f"🗺️ Área de Estudo: {bairro_selecionado}")
     
-    # Criamos o mapa base
     mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=15, tiles="OpenStreetMap")
     
     if poligono_bairro is not None:
-        # Desenha o perímetro original
         folium.GeoJson(
             poligono_bairro,
             style_function=lambda x: {'fillColor': 'orange', 'color': 'red', 'weight': 2, 'fillOpacity': 0.1}
         ).add_to(mapa)
         
-        # Só executa a plotagem se o botão de simular for clicado
         if btn_simular:
             geom = poligono_bairro.geometry.iloc[0]
             min_x, min_y, max_x, max_y = geom.bounds
             np.random.seed(42)
 
-            def plotar_densidade(taxa, cor, tipo):
+            def plotar_pontos_no_perimetro(taxa, cor, tipo="circulo"):
                 objetivo = int(taxa / 2)
                 contagem = 0
                 tentativas = 0
                 while contagem < objetivo and tentativas < 500:
                     tentativas += 1
-                    lat_r = np.random.uniform(min_y, max_y)
-                    lon_r = np.random.uniform(min_x, max_x)
-                    if Point(lon_r, lat_r).within(geom):
+                    lat_random = np.random.uniform(min_y, max_y)
+                    lon_random = np.random.uniform(min_x, max_x)
+                    if Point(lon_random, lat_random).within(geom):
                         if tipo == "circulo":
                             folium.CircleMarker(
-                                location=[lat_r, lon_r],
+                                location=[lat_random, lon_random],
                                 radius=5, color=cor, fill=True, fill_opacity=0.6
                             ).add_to(mapa)
                         else:
                             folium.RegularPolygonMarker(
-                                location=[lat_r, lon_r],
+                                location=[lat_random, lon_random],
                                 number_of_sides=4, radius=5, color=cor, fill=True, fill_opacity=0.8
                             ).add_to(mapa)
                         contagem += 1
 
-            plotar_densidade(taxa_sombra, "green", "circulo")
-            plotar_densidade(taxa_edificada, "gray", "quadrado")
+            plotar_pontos_no_perimetro(taxa_sombra, "green", "circulo")
+            plotar_pontos_no_perimetro(taxa_edificada, "gray", "quadrado")
 
-    # A KEY DINÂMICA resolve o problema do mapa apagar após carregar
-    st_folium(mapa, width=1100, height=450, key=f"mapa_{bairro_selecionado}_{btn_simular}")
+    # MUDANÇA CRUCIAL: folium_static impede o mapa de apagar ou piscar
+    folium_static(mapa, width=1100, height=450)
 
     # --- 2. RESULTADOS ---
     st.header("⚡Resultados da Simulação")
