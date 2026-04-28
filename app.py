@@ -5,76 +5,59 @@ import plotly.graph_objects as go
 import plotly.express as px
 from io import BytesIO
 from datetime import time
+from streamlit_option_menu import option_menu
 
 # ==========================================
-# CONFIGURAÇÃO E ESTILIZAÇÃO (CSS PRO)
+# CONFIGURAÇÃO
 # ==========================================
 st.set_page_config(page_title="Nayara - Simulador Térmico v2.0", layout="wide")
 
-# CSS para transformar os botões de rádio em botões de menu profissionais
-st.markdown("""
-    <style>
-    div.row-widget.stRadio > div{
-        flex-direction: column;
-    }
-    div.row-widget.stRadio img {
-        display: none;
-    }
-    /* Estilização dos botões do menu */
-    .st-emotion-cache-1gv3huu {
-        border-radius: 10px;
-        border: 1px solid #e0e0e0;
-        padding: 10px;
-        margin-bottom: 5px;
-        transition: 0.3s;
-    }
-    .st-emotion-cache-1gv3huu:hover {
-        background-color: #f0f2f6;
-        border-color: #ff4b4b;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- NAVEGAÇÃO POR BOTÕES NA SIDEBAR ---
-st.sidebar.title("🚀 Menu Principal")
-pagina = st.sidebar.radio(
-    "Selecione a seção:",
-    ["📖 Sobre o Projeto", "📄 Artigos e Referências", "📊 Simular Área de Estudo"],
-    index=0
-)
+# --- MENU LATERAL PROFISSIONAL ---
+with st.sidebar:
+    st.title("🚀 Menu Principal")
+    pagina = option_menu(
+        menu_title=None,
+        options=["Sobre o Projeto", "Referências", "Simular Área"],
+        icons=["cpu", "book", "journal-text"],
+        menu_icon="cast",
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "#fafafa"},
+            "icon": {"color": "orange", "font-size": "20px"}, 
+            "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
+            "nav-link-selected": {"background-color": "#ff4b4b"},
+        }
+    )
 
 # ==========================================
 # PÁGINA: SOBRE O PROJETO
 # ==========================================
-if pagina == "📖 Sobre o Projeto":
+if pagina == "Sobre o Projeto":
     st.title("📖 Sobre o Projeto")
     st.markdown("---")
+    st.write(f"Nayara, aluna de doutorado do Programa de Pós-graduação em Engenharia de Transportes da UFC.")
+    
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Objetivo")
         st.write("""
-        Esta plataforma foi desenvolvida como parte da pesquisa de doutorado de **Nayara** no 
-        *Programa de Pós-graduação em Engenharia de Transportes da UFC*. O foco é a análise 
-        do microclima urbano em cidades tropicais, especificamente Fortaleza/CE.
+        Análise do microclima urbano em cidades tropicais, com foco em Fortaleza/CE.
         """)
     with col2:
-        st.subheader("O que simulamos?")
+        st.subheader("Simulação")
         st.write("""
-        O sistema processa variáveis de materiais (albedo/emissividade), ocupação do solo e 
-        elementos de mitigação (verde e água) para gerar perfis térmicos de 24 horas.
+        Processamento de variáveis de materiais (albedo/emissividade), ocupação do solo e elementos de mitigação.
         """)
 
 # ==========================================
-# PÁGINA: ARTIGOS E REFERÊNCIAS
+# PÁGINA: REFERÊNCIAS
 # ==========================================
-elif pagina == "📄 Artigos e Referências":
+elif pagina == "Referências":
     st.title("📄 Produção Acadêmica")
     st.markdown("---")
-    st.write("Aqui você poderá listar seus artigos e as bases de dados utilizadas.")
-    
     st.markdown("""
-    * **Artigo de Revisão (Em progresso):** Metodologia utilizando Scopus e Web of Science.
-    * **Simulação Urbano-Térmica:** Estudo de caso sobre a interferência de infraestrutura no clima local.
+    * **Artigo de Revisão:** Utilizando Scopus e Web of Science.
+    * **Simulação Urbano-Térmica:** Estudo de caso sobre infraestrutura e clima local.
     """)
 
 # ==========================================
@@ -84,30 +67,27 @@ else:
     st.title("🏙️ Plataforma de Simulação de Microclima Urbano")
     st.markdown("---")
 
-    # --- PARÂMETROS NA SIDEBAR ---
+    # Parâmetros na Sidebar (Organizados por expansores)
     st.sidebar.header("📍 Parâmetros Globais")
 
-    # Clima
     with st.sidebar.expander("☁️ Configurações Climáticas", expanded=True):
         t_max = st.slider("Temp. Máxima (°C)", 15, 45, 32)
         t_min = st.slider("Temp. Mínima (°C)", 10, 35, 24)
         umidade = st.slider("Umidade (%)", 10, 100, 65)
         vento = st.number_input("Vento (m/s)", value=2.0)
 
-    # Materiais
     with st.sidebar.expander("🏗️ Materiais e Ocupação", expanded=True):
         material = st.selectbox("Material de Referência", ["Asfalto", "Concreto"])
         if material == "Asfalto":
-            emissividade = st.slider(f"Emissividade", 0.85, 0.93, 0.90)
+            emissividade = st.slider("Emissividade", 0.85, 0.93, 0.90)
             albedo = 0.10
         else:
-            emissividade = st.slider(f"Emissividade", 0.88, 0.93, 0.91)
+            emissividade = st.slider("Emissividade", 0.88, 0.93, 0.91)
             albedo = 0.30
         
         usar_edificacao = st.checkbox("Simular Edificações?", value=True)
         taxa_edificada = st.slider("Taxa Edificada (%)", 0, 100, 30) if usar_edificacao else 0
 
-    # Natureza
     with st.sidebar.expander("🌳 Natureza e Água", expanded=True):
         usar_permeavel = st.checkbox("Simular Solo Permeável?", value=True)
         taxa_permeavel = st.slider("Taxa Permeável (%)", 0, 100, 15) if usar_permeavel else 0
@@ -187,9 +167,9 @@ else:
             out = BytesIO()
             with pd.ExcelWriter(out, engine='xlsxwriter') as w:
                 df_ex.to_excel(w, index=False, sheet_name='Resultados')
+                w.sheets['Resultados'].set_column('A:C', 15)
             st.download_button("📥 Planilha Excel", out.getvalue(), f"simulacao_{res['mat']}.xlsx", use_container_width=True)
 
-        # NOTAS CIENTÍFICAS COMPLETAS (PRESERVADAS)
         with st.expander("📖 Notas Científicas e Metodologia Aplicada"):
             st.markdown(f"""
             ### Metodologia de Simulação
